@@ -2,7 +2,7 @@
   "name": "filoom",
   "short_name": "filoom",
   "description": "필름 감성 일기 앱",
-  "start_url": "/",
+  "start_url": "/filoom/",
   "display": "standalone",
   "background_color": "#FDF6EC",
   "theme_color": "#C8B49A",
@@ -20,5 +20,6 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "scope": "/filoom/"
 }
