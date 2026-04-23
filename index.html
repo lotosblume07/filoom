@@ -80,6 +80,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
 .tag-pill.sel{border-color:#C86880;background:var(--blush);color:#7A3A4A;}
 .tag-inp{border:none;background:#fff;outline:none;font-size:12px;color:var(--text);min-width:70px;max-width:130px;border-bottom:1px dashed #D8C9B8;padding:2px 4px;}
 .tag-inp::placeholder{color:#C5B5A8;}
+.star-zone{background:#fff;border:1.5px solid #D8C9B8;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:4px;position:relative;}
+.star-wrap{position:relative;display:inline-block;width:32px;height:32px;cursor:pointer;flex-shrink:0;}
+.star-bg{font-size:28px;line-height:1;color:#E8DDD2;user-select:none;}
+.star-fill{position:absolute;top:0;left:0;overflow:hidden;font-size:28px;line-height:1;color:#F5C242;user-select:none;white-space:nowrap;}
+.star-rating-lbl{font-size:12px;color:var(--light);margin-left:6px;}
+.star-count-badge{margin-left:auto;font-family:'Fraunces',serif;font-style:italic;font-size:20px;color:var(--text);}
 .shoot-btn{width:100%;padding:15px;background:var(--rose);border:none;border-radius:10px;color:#fff !important;cursor:pointer;box-shadow:0 3px 12px rgba(176,48,96,.38);margin-top:8px;display:flex;align-items:center;justify-content:center;gap:0;overflow:hidden;height:52px;transition:background .2s,gap .2s,transform .1s;}
 .shoot-btn:hover{background:#C8406C !important;gap:8px;}
 .shoot-btn:active{transform:scale(.98);}
@@ -288,6 +294,18 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
         <input class="inp" id="f-title" type="text" placeholder="오늘 하루를 한 줄로..." maxlength="60">
       </div>
       <div class="field-group">
+        <div class="field-lbl">Rating</div>
+        <div class="star-zone" id="star-zone">
+          <div class="star-wrap" data-i="1"><div class="star-bg">★</div><div class="star-fill" id="sf1" style="width:0%">★</div></div>
+          <div class="star-wrap" data-i="2"><div class="star-bg">★</div><div class="star-fill" id="sf2" style="width:0%">★</div></div>
+          <div class="star-wrap" data-i="3"><div class="star-bg">★</div><div class="star-fill" id="sf3" style="width:0%">★</div></div>
+          <div class="star-wrap" data-i="4"><div class="star-bg">★</div><div class="star-fill" id="sf4" style="width:0%">★</div></div>
+          <div class="star-wrap" data-i="5"><div class="star-bg">★</div><div class="star-fill" id="sf5" style="width:0%">★</div></div>
+          <div class="star-rating-lbl" id="star-lbl">탭해서 평가</div>
+          <div class="star-count-badge" id="star-count"></div>
+        </div>
+      </div>
+      <div class="field-group">
         <div class="field-lbl">Tags</div>
         <div class="tag-zone"><div class="tag-row" id="tag-row"></div></div>
       </div>
@@ -311,6 +329,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
     <div class="filter-bar">
       <span class="fbar-lbl">Filter</span>
       <div class="fpill active" onclick="setFilter('all',this)">전체</div>
+      <div class="fpill" onclick="setFilter('star5',this)" style="color:#F5C242;">★★★★★</div>
+      <div class="fpill" onclick="setFilter('star4',this)" style="color:#F5C242;">★★★★+</div>
+      <div class="fpill" onclick="setFilter('star3',this)" style="color:#F5C242;">★★★+</div>
       <div id="filter-pills" style="display:contents;"></div>
     </div>
     <div id="room-empty" class="room-empty" style="display:none;">
@@ -466,7 +487,8 @@ const ALL_USERS=[
 ];
 const FOLLOWER_IDS=['u1','u3'];
 
-let entries=[], tags=['설렘','맑음','평온','그리움','행복','비'], selTags=[];
+let entries=[], tags=['맑음','비','바람','눈','구름'], selTags=[];
+let curRating=0;  // 0=미평가, 0.5~5.0
 let rawImg=null, curFilter='kodak', noiseOn=false, leakSeed=0, tagFilter='all';
 let camStream=null, facing='environment';
 let profile={avatar:'🌸',username:'@filoom_user',bio:'오늘 하루를 한 장에 담는 중'};
@@ -546,6 +568,61 @@ function renderFilters(){
 function toggleNoise(){noiseOn=!noiseOn;document.getElementById('noise-btn').classList.toggle('on',noiseOn);updatePreview();renderFilters();}
 
 // ── 태그 ──
+function renderStars(val){
+  curRating=val;
+  for(let i=1;i<=5;i++){
+    const sf=document.getElementById('sf'+i);
+    const fill=Math.min(1,Math.max(0,val-i+1));
+    sf.style.width=(fill*100)+'%';
+  }
+  const lbl=document.getElementById('star-lbl');
+  const labels=['','최악이에요','별로예요','보통이에요','좋았어요','최고예요!'];
+  if(val===0){lbl.textContent='탭해서 평가';}
+  else{
+    const base=Math.ceil(val);
+    const half=val%1===0.5;
+    lbl.textContent=(half?'반짝 '+labels[base-1]:labels[base])||'';
+  }
+  // 별 개수 배지
+  const badge=document.getElementById('star-count');
+  badge.textContent=val>0?(val%1===0?'★'.repeat(val)+'☆'.repeat(5-val):''):'';
+}
+
+function initStarEvents(){
+  const zone=document.getElementById('star-zone');
+  if(!zone)return;
+
+  function getRatingFromEvent(e, wrap){
+    const rect=wrap.getBoundingClientRect();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const x=clientX-rect.left;
+    return x<rect.width/2?0.5:1.0;
+  }
+
+  document.querySelectorAll('.star-wrap').forEach(wrap=>{
+    const i=parseInt(wrap.dataset.i);
+    wrap.addEventListener('click',e=>{
+      const half=getRatingFromEvent(e,wrap);
+      const newVal=(i-1)+half;
+      // 같은 값 클릭 시 초기화
+      if(curRating===newVal) renderStars(0);
+      else renderStars(newVal);
+    });
+    wrap.addEventListener('mousemove',e=>{
+      const half=getRatingFromEvent(e,wrap);
+      renderStars((i-1)+half);
+    });
+    wrap.addEventListener('touchmove',e=>{
+      e.preventDefault();
+      const half=getRatingFromEvent(e,wrap);
+      renderStars((i-1)+half);
+    },{passive:false});
+  });
+  zone.addEventListener('mouseleave',()=>{
+    renderStars(curRating);
+  });
+}
+
 function renderTagRow(){
   const row=document.getElementById('tag-row');row.innerHTML='';
   tags.forEach(t=>{
@@ -576,7 +653,7 @@ function doShoot(){
   const photoData=document.getElementById('preview-canvas').toDataURL('image/jpeg',.82);
 
   // 2. entry 생성
-  const entry={id:Date.now(),date:TODAY,photo:photoData,caption:document.getElementById('f-title').value.trim()||'오늘 하루.',comment:document.getElementById('f-comment').value.trim()||'',tags:[...selTags],pinned:false,developing:true};
+  const entry={id:Date.now(),date:TODAY,photo:photoData,caption:document.getElementById('f-title').value.trim()||'오늘 하루.',comment:document.getElementById('f-comment').value.trim()||'',tags:[...selTags],rating:curRating,pinned:false,developing:true};
 
   // 3. 배열에 추가
   entries.unshift(entry);
@@ -585,7 +662,7 @@ function doShoot(){
   // 4. 폼 초기화
   document.getElementById('f-title').value='';
   document.getElementById('f-comment').value='';
-  selTags=[];rawImg=null;retake();renderTagRow();
+  selTags=[];curRating=0;renderStars(0);rawImg=null;retake();renderTagRow();
 
   // 5. My R∞m 탭으로 이동
   goTab('room');
@@ -641,7 +718,13 @@ function renderRoom(){
   const empty=document.getElementById('room-empty'),content=document.getElementById('room-content');
   if(!entries.length){empty.style.display='block';content.style.display='none';return;}
   empty.style.display='none';content.style.display='block';
-  const isMatch=e=>tagFilter==='all'||(e.tags||[]).includes(tagFilter);
+  const isMatch=e=>{
+    if(tagFilter==='all') return true;
+    if(tagFilter==='star5') return e.rating>=5;
+    if(tagFilter==='star4') return e.rating>=4;
+    if(tagFilter==='star3') return e.rating>=3;
+    return (e.tags||[]).includes(tagFilter);
+  };
 
   const grid=document.getElementById('roll-grid');grid.innerHTML='';
   entries.forEach((e,i)=>{
@@ -653,7 +736,8 @@ function renderRoom(){
     if(e.developing){th.innerHTML='<div class="dev-box"><div class="dev-txt">현상 중<br>...</div></div>';}
     else{const img=document.createElement('img');img.src=e.photo;img.style.cssText='width:100%;height:100%;object-fit:cover;display:block;';th.appendChild(img);const pin=document.createElement('button');pin.className='grid-pin-btn'+(e.pinned?' pinned':'');pin.textContent='✦';pin.onclick=ev=>togglePin(e.id,ev);th.appendChild(pin);if(i===0){const d=document.createElement('div');d.className='new-dot2';cell.appendChild(d);}}
     const inf=document.createElement('div');inf.className='grid-info';
-    inf.innerHTML=`<div class="grid-date">${e.date.split('—')[0].trim()}</div><div class="grid-cap">${e.caption}</div><div class="grid-tags">${(e.tags||[]).map(t=>`<span class="gtag">#${t}</span>`).join('')}</div>`;
+    const starStr=e.rating?('★'.repeat(Math.floor(e.rating))+(e.rating%1?'½':'')+'☆'.repeat(5-Math.ceil(e.rating))):'';
+    inf.innerHTML=`<div class="grid-date">${e.date.split('—')[0].trim()}${e.rating>=4.5?' ✦':''}</div><div class="grid-cap">${e.caption}</div>${starStr?`<div style="font-size:9px;color:#F5C242;letter-spacing:1px;margin-bottom:3px;">${starStr}</div>`:''}<div class="grid-tags">${(e.tags||[]).map(t=>`<span class="gtag">#${t}</span>`).join('')}</div>`;
     cell.appendChild(th);cell.appendChild(inf);grid.appendChild(cell);
   });
 }
@@ -717,7 +801,40 @@ function closePhoto(){document.getElementById('photo-modal').classList.remove('s
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
 // ── 나무 ──
-const TR={W:390,H:430,CREAM:'#FDF6EC',TRUNK:'#8B6A4A',TRUNK2:'#6A4E2A',POT1:'#C8956A',POT2:'#A06840',SOIL:'#7A5A38',SAGE:'#7A9E74',SAGE2:'#5A7E54',BORDER:'#E8DDD2',cards:[],inited:false};
+// ── 계절/감정 시스템 ──
+function getSeason(){
+  const m=new Date().getMonth()+1;
+  if(m>=3&&m<=5) return 'spring';
+  if(m>=6&&m<=8) return 'summer';
+  if(m>=9&&m<=11) return 'autumn';
+  return 'winter';
+}
+function getEmotionMood(){
+  // 최근 10개 entry의 별점 평균으로 감정 판단
+  const recent=entries.filter(e=>!e.developing&&e.rating>0).slice(0,10);
+  if(!recent.length) return 'neutral';
+  const avg=recent.reduce((s,e)=>s+e.rating,0)/recent.length;
+  if(avg>=4.0) return 'happy';
+  if(avg<=2.0) return 'sad';
+  return 'neutral';
+}
+function getGrowthStage(){
+  const n=entries.filter(e=>!e.developing).length;
+  if(n===0) return 0;   // 새싹
+  if(n<=5)  return 1;   // 작은 나무
+  if(n<=15) return 2;   // 중간 나무
+  if(n<=30) return 3;   // 큰 나무
+  return 4;             // 울창한 나무
+}
+
+const SEASON_COLORS={
+  spring:{leaf:'#88C070',leaf2:'#5A9A48',flower:'#F2C4CE',sky:'#FDF6EC'},
+  summer:{leaf:'#4A8F3F',leaf2:'#2E6B28',flower:'#FFE082',sky:'#F0F8EC'},
+  autumn:{leaf:'#C4622D',leaf2:'#8B3E10',flower:'#F5A623',sky:'#FDF0E8'},
+  winter:{leaf:'#A0B4B0',leaf2:'#6A8884',flower:'#DDEEFF',sky:'#F0F4F8'},
+};
+
+const TR={W:390,H:440,CREAM:'#FDF6EC',TRUNK:'#8B6A4A',TRUNK2:'#6A4E2A',POT1:'#C8956A',POT2:'#A06840',SOIL:'#7A5A38',SAGE:'#7A9E74',SAGE2:'#5A7E54',BORDER:'#E8DDD2',cards:[],inited:false};
 const BRANCHES=[
   {bx:195,by:195,a:2.15,len:88},   // 1번: 왼쪽 위  ex≈147 ey≈261
   {bx:195,by:195,a:0.85,len:88},   // 2번: 오른쪽 위 ex≈253 ey≈253
@@ -728,57 +845,165 @@ const TILTS=[10,-12,8,-10];
 const PCOLORS=['#F2C4CE','#C2DCF0','#F5E0B0','#B5D4B5'];
 
 function buildCards(photos){TR.cards=[];photos.slice(0,4).forEach((ph,i)=>{const b=BRANCHES[i];TR.cards.push({bx:b.bx,by:b.by,ex:b.bx+Math.cos(b.a)*b.len,ey:b.by+Math.sin(b.a)*b.len-8,photo:ph,tilt:TILTS[i],color:PCOLORS[i],hover:false});});}
-function leaf(ctx,x,y,s,r){ctx.save();ctx.translate(x,y);ctx.rotate(r);ctx.scale(s,s);ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(9,-15,20,-17,24,-8);ctx.bezierCurveTo(26,2,14,7,0,0);ctx.fillStyle=TR.SAGE;ctx.fill();ctx.strokeStyle=TR.SAGE2;ctx.lineWidth=0.5;ctx.stroke();ctx.restore();}
+function leaf(ctx,x,y,s,r,sc){
+  const sc2=sc||SEASON_COLORS[getSeason()];
+  ctx.save();ctx.translate(x,y);ctx.rotate(r);ctx.scale(s,s);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(9,-15,20,-17,24,-8);ctx.bezierCurveTo(26,2,14,7,0,0);
+  ctx.fillStyle=sc2.leaf;ctx.fill();ctx.strokeStyle=sc2.leaf2;ctx.lineWidth=0.5;ctx.stroke();
+  ctx.restore();
+}
+function flower(ctx,x,y,s,col){
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  for(let i=0;i<5;i++){
+    ctx.save();ctx.rotate(i*Math.PI*2/5);
+    ctx.beginPath();ctx.ellipse(0,-5,3,5,0,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.globalAlpha=0.85;ctx.fill();ctx.restore();
+  }
+  ctx.beginPath();ctx.arc(0,0,3,0,Math.PI*2);
+  ctx.fillStyle='#FFF9C4';ctx.globalAlpha=1;ctx.fill();
+  ctx.restore();
+}
+function snowflake(ctx,x,y,s){
+  ctx.save();ctx.translate(x,y);ctx.scale(s,s);
+  ctx.strokeStyle='rgba(200,220,255,0.7)';ctx.lineWidth=0.8;
+  for(let i=0;i<6;i++){
+    ctx.save();ctx.rotate(i*Math.PI/3);
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(-2,-6);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,-4);ctx.lineTo(2,-6);ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
 
 function drawTree(){
   const C=document.getElementById('treeCanvas');if(!C)return;
-  // 크기가 다를 때만 재설정 (재설정하면 캔버스 내용이 지워짐)
-  if(C.width!==TR.W||C.height!==TR.H){
-    C.width=TR.W;C.height=TR.H;
-  }
+  if(C.width!==TR.W||C.height!==TR.H){C.width=TR.W;C.height=TR.H;}
   const ow=C.offsetWidth||390;
   C.style.height=Math.round(TR.H*ow/TR.W)+'px';
   const ctx=C.getContext('2d');ctx.clearRect(0,0,TR.W,TR.H);
-  ctx.fillStyle=TR.CREAM;ctx.fillRect(0,0,TR.W,TR.H);
 
-  // 화분
-  const px=170,py=365,pw=50,ph=46;
-  ctx.beginPath();ctx.moveTo(px-4,py);ctx.lineTo(px+pw+4,py);ctx.lineTo(px+pw-4,py+ph);ctx.lineTo(px+4,py+ph);ctx.closePath();ctx.fillStyle=TR.POT1;ctx.fill();ctx.strokeStyle=TR.POT2;ctx.lineWidth=1.5;ctx.stroke();
+  const season=getSeason();
+  const mood=getEmotionMood();
+  const stage=getGrowthStage();
+  const sc=SEASON_COLORS[season];
+
+  // ── 배경 하늘 그라데이션 ──
+  const bg=ctx.createLinearGradient(0,0,0,TR.H*0.7);
+  bg.addColorStop(0,sc.sky);
+  bg.addColorStop(1,'#FFFAF4');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,TR.W,TR.H);
+
+  // 겨울: 눈 배경 파티클
+  if(season==='winter'){
+    const seed=42;
+    for(let i=0;i<18;i++){
+      const x=((seed*i*137+i*73)%370)+10;
+      const y=((seed*i*97+i*53)%320)+20;
+      const s=0.4+((i*31)%10)/20;
+      snowflake(ctx,x,y,s);
+    }
+  }
+  // 봄: 꽃잎 날리기
+  if(season==='spring'){
+    for(let i=0;i<12;i++){
+      const x=((i*113+i*79)%360)+15;
+      const y=((i*97+i*61)%280)+30;
+      const s=0.3+((i*41)%8)/20;
+      ctx.save();ctx.globalAlpha=0.4;
+      flower(ctx,x,y,s,sc.flower);
+      ctx.restore();
+    }
+  }
+
+  // ── 화분 ──
+  const px=170,py=370,pw=50,ph=46;
+  // 겨울엔 눈 쌓임 효과
+  if(season==='winter'){
+    ctx.beginPath();ctx.ellipse(px+pw/2,py-2,pw/2+8,7,0,0,Math.PI*2);
+    ctx.fillStyle='rgba(220,235,255,0.85)';ctx.fill();
+  }
+  ctx.beginPath();ctx.moveTo(px-4,py);ctx.lineTo(px+pw+4,py);ctx.lineTo(px+pw-4,py+ph);ctx.lineTo(px+4,py+ph);ctx.closePath();
+  ctx.fillStyle=TR.POT1;ctx.fill();ctx.strokeStyle=TR.POT2;ctx.lineWidth=1.5;ctx.stroke();
   ctx.beginPath();ctx.moveTo(px-6,py+1);ctx.lineTo(px+pw+6,py+1);ctx.strokeStyle=TR.POT2;ctx.lineWidth=4;ctx.lineCap='round';ctx.stroke();
   ctx.beginPath();ctx.ellipse(px+pw/2,py+3,pw/2+4,7,0,0,Math.PI*2);ctx.fillStyle=TR.SOIL;ctx.fill();
 
-  // 줄기
-  [[TR.TRUNK,10],[TR.TRUNK2,5]].forEach(([col,lw])=>{ctx.beginPath();ctx.moveTo(195,py+3);ctx.bezierCurveTo(191,342,190,308,195,278);ctx.bezierCurveTo(197,252,192,228,195,198);ctx.bezierCurveTo(196,178,194,162,195,150);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();});
+  // ── 성장 단계별 줄기 굵기 ──
+  const trunkW=[6,8,10,13,16][stage]||10;
+  const trunkW2=[3,4,5,7,9][stage]||5;
+  const trunkH=py+3;
 
-  // 가지
-  TR.cards.forEach(c=>{[[TR.TRUNK,4],[TR.TRUNK2,2.2]].forEach(([col,lw])=>{ctx.beginPath();ctx.moveTo(c.bx,c.by);ctx.quadraticCurveTo(c.bx+(c.ex-c.bx)*.5,c.by+(c.ey-c.by)*.5-12,c.ex,c.ey+8);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();});});
+  [[TR.TRUNK,trunkW],[TR.TRUNK2,trunkW2]].forEach(([col,lw])=>{
+    ctx.beginPath();ctx.moveTo(195,trunkH);
+    ctx.bezierCurveTo(191,347,190,313,195,283);
+    ctx.bezierCurveTo(197,257,192,233,195,203);
+    ctx.bezierCurveTo(196,183,194,167,195,155);
+    ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
+  });
 
-  // 잎(뒤)
-  [[128,185,1.0,-.3],[256,180,.95,.4],[112,237,.88,-.5],[270,232,.92,.3],[120,270,.82,-.2],[262,266,.88,.5],[165,155,.72,-.1],[218,152,.78,.2]].forEach(a=>leaf(ctx,...a));
+  // ── 가지 ──
+  TR.cards.forEach(c=>{
+    [[TR.TRUNK,4],[TR.TRUNK2,2.2]].forEach(([col,lw])=>{
+      ctx.beginPath();ctx.moveTo(c.bx,c.by);
+      ctx.quadraticCurveTo(c.bx+(c.ex-c.bx)*.5,c.by+(c.ey-c.by)*.5-12,c.ex,c.ey+8);
+      ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
+    });
+  });
 
-  // 폴라로이드
+  // ── 잎 (뒤 레이어) — 성장 단계에 따라 수 증가 ──
+  const leafSets=[
+    [],
+    [[165,175,.6,-.1],[218,172,.65,.2]],
+    [[128,190,1.0,-.3],[256,185,.95,.4],[112,242,.88,-.5],[270,237,.92,.3]],
+    [[128,190,1.0,-.3],[256,185,.95,.4],[112,242,.88,-.5],[270,237,.92,.3],[120,275,.82,-.2],[262,270,.88,.5],[165,160,.72,-.1],[218,157,.78,.2]],
+    [[128,190,1.0,-.3],[256,185,.95,.4],[112,242,.88,-.5],[270,237,.92,.3],[120,275,.82,-.2],[262,270,.88,.5],[165,160,.72,-.1],[218,157,.78,.2],[145,220,.6,.1],[238,215,.62,-.12],[175,300,.55,.08],[210,295,.58,-.09]],
+  ];
+  (leafSets[stage]||leafSets[2]).forEach(a=>leaf(ctx,a[0],a[1],a[2],a[3],sc));
+
+  // 봄: 꽃 장식
+  if(season==='spring'&&stage>=1){
+    const flowerPos=[[135,182],[262,178],[118,238],[275,233],[128,270],[267,265]].slice(0,stage*2);
+    flowerPos.forEach(([x,y])=>flower(ctx,x,y,0.7,sc.flower));
+  }
+  // 가을: 떨어지는 잎
+  if(season==='autumn'){
+    for(let i=0;i<6;i++){
+      const x=80+i*45+((i*37)%30);
+      const y=250+((i*53)%80);
+      ctx.save();ctx.globalAlpha=0.5;
+      leaf(ctx,x,y,0.4+((i*23)%10)/30,(i*0.6-1.5),sc);
+      ctx.restore();
+    }
+  }
+
+  // ── 폴라로이드 ──
   TR.cards.forEach(c=>{
     ctx.save();ctx.translate(c.ex,c.ey);ctx.rotate(c.tilt*Math.PI/180);
-    const sc=c.hover?1.12:1.0;ctx.scale(sc,sc);
-    // 실
-    ctx.save();ctx.scale(1/sc,1/sc);ctx.beginPath();ctx.moveTo(0,-28);ctx.lineTo((c.bx-c.ex)*.15,(c.by-c.ey)*.15-6);ctx.strokeStyle='#C8B49A';ctx.lineWidth=1.2;ctx.stroke();ctx.restore();
+    const hsc=c.hover?1.12:1.0;ctx.scale(hsc,hsc);
+    // 실 색상 — 계절 반영
+    const stringCol=season==='winter'?'#A0B8D0':season==='autumn'?'#C8956A':'#C8B49A';
+    ctx.save();ctx.scale(1/hsc,1/hsc);ctx.beginPath();ctx.moveTo(0,-28);ctx.lineTo((c.bx-c.ex)*.15,(c.by-c.ey)*.15-6);ctx.strokeStyle=stringCol;ctx.lineWidth=1.2;ctx.stroke();ctx.restore();
     const cw=54,ch=62,imgH=cw-6;
-    ctx.fillStyle='rgba(58,46,40,.09)';ctx.beginPath();ctx.roundRect(-cw/2+2,-ch/2+2,cw,ch,3);ctx.fill();
+    // 겨울: 폴라로이드에 살짝 서리 효과
+    const shadowAlpha=season==='winter'?0.06:0.09;
+    ctx.fillStyle=`rgba(58,46,40,${shadowAlpha})`;ctx.beginPath();ctx.roundRect(-cw/2+2,-ch/2+2,cw,ch,3);ctx.fill();
     ctx.fillStyle='#FFFAF4';ctx.beginPath();ctx.roundRect(-cw/2,-ch/2,cw,ch,3);ctx.fill();ctx.strokeStyle=TR.BORDER;ctx.lineWidth=0.5;ctx.stroke();
     ctx.fillStyle=c.color;ctx.beginPath();ctx.roundRect(-cw/2+3,-ch/2+3,cw-6,imgH,2);ctx.fill();
     if(c.photo._img){
       ctx.save();
       ctx.beginPath();ctx.roundRect(-cw/2+3,-ch/2+3,cw-6,imgH,2);ctx.clip();
-      // object-fit:cover 효과 — 이미지 비율 유지하며 영역 채우기
       const iw=c.photo._img.naturalWidth||c.photo._img.width;
       const ih=c.photo._img.naturalHeight||c.photo._img.height;
-      const tw=cw-6, th=imgH;
-      const scale=Math.max(tw/iw, th/ih);
-      const dw=iw*scale, dh=ih*scale;
-      const dx=-cw/2+3+(tw-dw)/2;
-      const dy=-ch/2+3+(th-dh)/2;
-      ctx.drawImage(c.photo._img, dx, dy, dw, dh);
+      const tw=cw-6,th=imgH;
+      const scale=Math.max(tw/iw,th/ih);
+      const dw=iw*scale,dh=ih*scale;
+      ctx.drawImage(c.photo._img,-cw/2+3+(tw-dw)/2,-ch/2+3+(th-dh)/2,dw,dh);
       ctx.restore();
+    }
+    // 겨울: 폴라로이드 위에 눈 살짝
+    if(season==='winter'){
+      ctx.fillStyle='rgba(220,235,255,0.5)';
+      ctx.beginPath();ctx.ellipse(-cw/2+cw/2,-ch/2+1,cw/2-3,3,0,0,Math.PI*2);ctx.fill();
     }
     ctx.fillStyle='#7A6A5E';ctx.font='5.5px DM Sans,sans-serif';ctx.textAlign='center';
     const cap=c.photo.caption||'';ctx.fillText(cap.length>10?cap.slice(0,10)+'…':cap,0,ch/2-11);
@@ -786,8 +1011,55 @@ function drawTree(){
     ctx.restore();
   });
 
-  // 잎(앞)
-  leaf(ctx,158,210,.88,.12);leaf(ctx,226,204,.84,-.16);
+  // ── 잎 (앞 레이어) ──
+  if(stage>=2){
+    leaf(ctx,158,215,.88,.12,sc);
+    leaf(ctx,226,209,.84,-.16,sc);
+  }
+
+  // ── 감정 반응: happy = 반딧불이, sad = 빗방울 ──
+  if(mood==='happy'&&stage>=2){
+    for(let i=0;i<5;i++){
+      const x=100+i*45+((i*37+Date.now()/3000|0)%20);
+      const y=160+((i*53)%80);
+      ctx.save();
+      ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,230,80,0.7)';ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,230,80,0.15)';ctx.fill();
+      ctx.restore();
+    }
+  }
+  if(mood==='sad'){
+    for(let i=0;i<8;i++){
+      const x=60+i*38+((i*29)%20);
+      const y=130+((i*47)%100);
+      ctx.save();ctx.globalAlpha=0.25;ctx.strokeStyle='#6A8AAA';ctx.lineWidth=0.8;
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-1,y+8);ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ── 성장 단계 0: 새싹 ──
+  if(stage===0){
+    ctx.save();ctx.translate(195,trunkH-10);
+    ctx.strokeStyle=TR.TRUNK;ctx.lineWidth=2;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-20);ctx.stroke();
+    // 새싹 잎
+    leaf(ctx,-8,trunkH-30,.5,0.3,sc);
+    leaf(ctx,8,trunkH-30,.5,-0.3,sc);
+    ctx.restore();
+  }
+
+  // 겨울 눈 파티클 (앞)
+  if(season==='winter'){
+    for(let i=0;i<8;i++){
+      const x=((i*173+i*91)%360)+15;
+      const y=((i*127+i*71)%200)+150;
+      const s=0.3+((i*41)%8)/25;
+      ctx.save();ctx.globalAlpha=0.5;snowflake(ctx,x,y,s);ctx.restore();
+    }
+  }
 }
 
 function refreshTree(){
@@ -848,6 +1120,7 @@ renderTagRow();
 renderRoom();
 renderProfile();
 renderFilters();
+initStarEvents();
 // DOM 완전히 준비된 후 나무 초기화
 setTimeout(()=>{ refreshTree(); }, 0);
 </script>
