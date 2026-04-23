@@ -80,6 +80,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--text);
 .tag-pill.sel{border-color:#C86880;background:var(--blush);color:#7A3A4A;}
 .tag-inp{border:none;background:#fff;outline:none;font-size:12px;color:var(--text);min-width:70px;max-width:130px;border-bottom:1px dashed #D8C9B8;padding:2px 4px;}
 .tag-inp::placeholder{color:#C5B5A8;}
+.tag-add-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--blush);color:var(--rose);border:none;font-size:16px;cursor:pointer;flex-shrink:0;line-height:1;transition:background .15s,transform .1s;}
+.tag-add-btn:hover{background:#e8a8b8;}
+.tag-add-btn:active{transform:scale(.9);}
+.tag-popup{position:fixed;inset:0;background:rgba(58,46,40,.45);z-index:150;display:flex;align-items:flex-end;justify-content:center;}
+.tag-popup-card{background:var(--warm);border-radius:20px 20px 0 0;width:100%;max-width:430px;padding:24px 20px 32px;animation:slideUp .22s ease;}
+@keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.tag-popup-title{font-family:'Fraunces',serif;font-style:italic;font-weight:300;font-size:18px;color:var(--text);margin-bottom:16px;}
+.tag-popup-inp{width:100%;background:#fff;border:1.5px solid #D8C9B8;border-radius:10px;padding:12px 16px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--text);outline:none;margin-bottom:12px;}
+.tag-popup-inp:focus{border-color:var(--rose);}
+.tag-popup-inp::placeholder{color:#C5B5A8;}
+.tag-popup-suggestions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+.tag-popup-pill{display:inline-flex;align-items:center;padding:6px 12px;border-radius:20px;font-size:12px;cursor:pointer;background:#F2E8D8;color:#7A6A5E;border:1.5px solid transparent;transition:all .15s;}
+.tag-popup-pill.sel{background:var(--blush);color:#7A3A4A;border-color:#C86880;}
+.tag-popup-btns{display:flex;gap:10px;}
+.tag-popup-cancel{flex:1;padding:13px;background:none;border:1.5px solid var(--border);border-radius:10px;color:var(--light);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;}
+.tag-popup-confirm{flex:2;padding:13px;background:var(--rose);border:none;border-radius:10px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;}
+.tag-popup-confirm:hover{background:#C8406C;}
 .star-zone{background:#fff;border:1.5px solid #D8C9B8;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:4px;position:relative;}
 .star-wrap{position:relative;display:inline-block;width:32px;height:32px;cursor:pointer;flex-shrink:0;}
 .star-bg{font-size:28px;line-height:1;color:#E8DDD2;user-select:none;}
@@ -630,7 +647,6 @@ function renderTagRow(){
     p.className='tag-pill'+(selTags.includes(t)?' sel':'');
     p.textContent='#'+t;
     p.onclick=()=>{const i=selTags.indexOf(t);i>=0?selTags.splice(i,1):selTags.push(t);renderTagRow();};
-    // 꾹 누르면 태그 삭제
     longPress(p,()=>{
       tags=tags.filter(x=>x!==t);
       selTags=selTags.filter(x=>x!==t);
@@ -638,9 +654,76 @@ function renderTagRow(){
     });
     row.appendChild(p);
   });
-  const inp=document.createElement('input');inp.className='tag-inp';inp.placeholder='+ 태그 추가';
-  inp.onkeydown=e=>{if(e.key!=='Enter')return;const v=inp.value.trim().replace(/^#/,'');if(!v)return;if(!tags.includes(v))tags.push(v);if(!selTags.includes(v))selTags.push(v);inp.value='';save();renderTagRow();};
-  row.appendChild(inp);
+  // + 버튼
+  const addBtn=document.createElement('button');
+  addBtn.className='tag-add-btn';addBtn.textContent='+';
+  addBtn.onclick=()=>openTagPopup();
+  row.appendChild(addBtn);
+}
+
+function openTagPopup(){
+  // 이미 있으면 제거
+  const exist=document.getElementById('tag-popup');if(exist)exist.remove();
+
+  const pop=document.createElement('div');
+  pop.className='tag-popup';pop.id='tag-popup';
+  pop.onclick=e=>{if(e.target===pop)closeTagPopup();};
+
+  const card=document.createElement('div');card.className='tag-popup-card';
+  card.innerHTML=`
+    <div class="tag-popup-title">태그 추가</div>
+    <input class="tag-popup-inp" id="tag-popup-inp" type="text" placeholder="태그를 입력하세요..." maxlength="12" autocomplete="off">
+    <div class="tag-popup-suggestions" id="tag-popup-sugg"></div>
+    <div class="tag-popup-btns">
+      <button class="tag-popup-cancel" onclick="closeTagPopup()">취소</button>
+      <button class="tag-popup-confirm" onclick="confirmTagPopup()">추가</button>
+    </div>`;
+  pop.appendChild(card);
+  document.body.appendChild(pop);
+
+  // 기존 태그 추천
+  renderTagSuggestions('');
+
+  const inp=document.getElementById('tag-popup-inp');
+  inp.focus();
+  inp.addEventListener('input',()=>renderTagSuggestions(inp.value));
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();confirmTagPopup();}});
+}
+
+function renderTagSuggestions(query){
+  const sugg=document.getElementById('tag-popup-sugg');if(!sugg)return;
+  sugg.innerHTML='';
+  const q=query.trim().toLowerCase().replace(/^#/,'');
+  // 기존 태그 중 검색어와 맞는 것 표시
+  const filtered=tags.filter(t=>!q||t.includes(q));
+  filtered.forEach(t=>{
+    const p=document.createElement('div');
+    p.className='tag-popup-pill'+(selTags.includes(t)?' sel':'');
+    p.textContent='#'+t;
+    p.onclick=()=>{
+      const i=selTags.indexOf(t);
+      i>=0?selTags.splice(i,1):selTags.push(t);
+      renderTagRow();renderTagSuggestions(query);
+    };
+    sugg.appendChild(p);
+  });
+}
+
+function confirmTagPopup(){
+  const inp=document.getElementById('tag-popup-inp');if(!inp)return;
+  const v=inp.value.trim().replace(/^#/,'');
+  if(v){
+    if(!tags.includes(v))tags.push(v);
+    if(!selTags.includes(v))selTags.push(v);
+    save();renderTagRow();
+    toast('#'+v+' 태그 추가!');
+  }
+  closeTagPopup();
+}
+
+function closeTagPopup(){
+  const pop=document.getElementById('tag-popup');
+  if(pop){pop.style.animation='slideDown .18s ease';setTimeout(()=>pop.remove(),160);}
 }
 
 // ── SHOOT 핵심 ──
